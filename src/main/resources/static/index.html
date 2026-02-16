@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Demo Auth (email + token)</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, Arial, sans-serif; margin: 0; padding: 24px; }
+    .card { max-width: 680px; margin: 0 auto; background: rgba(0,0,0,0.05); padding: 16px 20px; border-radius: 12px; }
+    h1 { margin: 0 0 12px; }
+    .row { display: flex; gap: 10px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+    input[type="email"], input[type="password"], input[type="text"] { padding: 8px 10px; border-radius: 8px; border: 1px solid #999; min-width: 260px; }
+    button { padding: 8px 12px; border-radius: 8px; border: 1px solid #666; cursor: pointer; }
+    .btn-primary { background: #0ea5e9; color: #041018; font-weight: 700; border-color: #0ea5e9; }
+    .btn-outline { background: transparent; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .muted { opacity: .7; }
+    .ok { color: #16a34a; }
+    .err { color: #ef4444; }
+    .status { min-height: 22px; }
+    .box { border: 1px dashed #888; border-radius: 8px; padding: 10px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Authentification de démonstration</h1>
+    <p class="muted">Identité = email (id), credentials = mot de passe (chaîne), token = chaîne (UUID), cuid interne.</p>
+
+    <div class="row">
+      <input id="email" type="email" placeholder="email@example.com" />
+      <input id="pwd" type="password" placeholder="mot de passe" />
+    </div>
+
+    <div class="row">
+      <button id="btnRegister" class="btn-outline">S'inscrire</button>
+      <button id="btnLogin" class="btn-primary">Se connecter</button>
+      <button id="btnVerify" class="btn-outline">Vérifier le token</button>
+      <button id="btnLogout" class="btn-outline">Se déconnecter</button>
+    </div>
+
+    <div class="grid">
+      <div class="box">
+        <h3>Session</h3>
+        <div>id (email): <span id="outId" class="mono">—</span></div>
+        <div>cuid: <span id="outCuid" class="mono">—</span></div>
+        <div>token: <span id="outToken" class="mono">—</span></div>
+        <div>issuedAt: <span id="outIssued" class="mono">—</span></div>
+      </div>
+      <div class="box">
+        <h3>Statut</h3>
+        <div id="status" class="status">Prêt</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const api = {
+      register: async (email, credential) => {
+        const res = await fetch('/auth/register', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ email, credential })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      },
+      login: async (email, credential) => {
+        const res = await fetch('/auth/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ email, credential })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      },
+      verify: async (token) => {
+        const res = await fetch('/auth/verify?token=' + encodeURIComponent(token), { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      },
+      logout: async (token) => {
+        const res = await fetch('/auth/logout?token=' + encodeURIComponent(token), { method: 'POST', headers: { 'Accept': 'application/json' } });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      }
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const state = { token: '', id: '', cuid: '', issuedAt: '' };
+    const setStatus = (msg, ok) => { const el = $('status'); el.textContent = msg; el.className = 'status ' + (ok ? 'ok' : 'err'); };
+    const refresh = () => {
+      $('outId').textContent = state.id || '—';
+      $('outCuid').textContent = state.cuid || '—';
+      $('outToken').textContent = state.token || '—';
+      $('outIssued').textContent = state.issuedAt || '—';
+    };
+
+    $('btnRegister').addEventListener('click', async () => {
+      try {
+        const email = $('email').value.trim(); const pwd = $('pwd').value;
+        if (!email || !pwd) { setStatus('Email et mot de passe requis', false); return; }
+        const r = await api.register(email, pwd);
+        setStatus('Inscription OK (' + r.id + ')', true);
+        refresh();
+      } catch (e) { setStatus('Erreur inscription: ' + e.message, false); }
+    });
+
+    $('btnLogin').addEventListener('click', async () => {
+      try {
+        const email = $('email').value.trim(); const pwd = $('pwd').value;
+        if (!email || !pwd) { setStatus('Email et mot de passe requis', false); return; }
+        const r = await api.login(email, pwd);
+        state.token = r.token; state.id = r.id; state.cuid = r.cuid; state.issuedAt = r.issuedAt;
+        setStatus('Connexion OK', true);
+        refresh();
+      } catch (e) { setStatus('Erreur connexion: ' + e.message, false); }
+    });
+
+    $('btnVerify').addEventListener('click', async () => {
+      try {
+        if (!state.token) { setStatus('Aucun token. Connectez-vous d\'abord.', false); return; }
+        const r = await api.verify(state.token);
+        state.id = r.id; state.cuid = r.cuid; state.issuedAt = r.issuedAt;
+        setStatus('Token valide', true);
+        refresh();
+      } catch (e) { setStatus('Token invalide: ' + e.message, false); }
+    });
+
+    $('btnLogout').addEventListener('click', async () => {
+      try {
+        if (!state.token) { setStatus('Aucun token à révoquer.', false); return; }
+        await api.logout(state.token);
+        state.token = ''; state.id = state.id || ''; state.cuid = ''; state.issuedAt = '';
+        setStatus('Déconnexion OK', true);
+        refresh();
+      } catch (e) { setStatus('Erreur déconnexion: ' + e.message, false); }
+    });
+
+    refresh();
+  </script>
+</body>
+</html>

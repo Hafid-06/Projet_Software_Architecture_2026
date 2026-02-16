@@ -1,0 +1,20 @@
+meta {
+  name: Crée
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/tokens
+  body: json
+  auth: inherit
+}
+
+body:json {
+  { "identityId": {{identityId}}, "authorityId": {{authorityId}}, "value": "tok_abc123", "expiresAt": "2030-12-31T23:59:59Z" }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

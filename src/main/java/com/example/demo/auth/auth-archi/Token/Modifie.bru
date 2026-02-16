@@ -1,0 +1,20 @@
+meta {
+  name: Modifie
+  type: http
+  seq: 3
+}
+
+put {
+  url: {{baseUrl}}/tokens/{{tokenId}}
+  body: json
+  auth: inherit
+}
+
+body:json {
+  { "identityId": {{identityId}}, "authorityId": {{authorityId}}, "value": "tok_new456", "expiresAt": "2031-12-31T23:59:59Z", "revoked": true }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

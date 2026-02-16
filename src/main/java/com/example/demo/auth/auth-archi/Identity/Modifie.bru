@@ -1,0 +1,20 @@
+meta {
+  name: Modifie
+  type: http
+  seq: 3
+}
+
+put {
+  url: {{baseUrl}}/identities/{identityId}
+  body: json
+  auth: inherit
+}
+
+body:json {
+   {"email":"user@example.com","name":"User 2"}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

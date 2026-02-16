@@ -1,0 +1,19 @@
+meta {
+  name: Verify
+  type: http
+  seq: 3
+}
+
+get {
+  url:  {{baseUrl}}/auth/verify?token={{token}}
+  body: none
+  auth: inherit
+}
+
+params:query {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+}
