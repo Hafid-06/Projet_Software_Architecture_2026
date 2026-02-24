@@ -4,8 +4,7 @@ import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
-@Table(name = "credentials",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"identity_id", "authority_id"}))
+@Table(name = "credentials")
 public class Credential {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -27,7 +26,8 @@ public class Credential {
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 
-    public Credential() {}
+    public Credential() {
+    }
 
     public Credential(String value, Identity identity, Authority authority) {
         this.value = value;
@@ -35,18 +35,43 @@ public class Credential {
         this.authority = authority;
     }
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    public Long getId() {
+        return id;
+    }
 
-    public String getValue() { return value; }
-    public void setValue(String value) { this.value = value; }
+    public void setId(Long id) {
+        this.id = id;
+    }
 
-    public Identity getIdentity() { return identity; }
-    public void setIdentity(Identity identity) { this.identity = identity; }
+    public String getValue() {
+        return value;
+    }
 
-    public Authority getAuthority() { return authority; }
-    public void setAuthority(Authority authority) { this.authority = authority; }
+    public void setValue(String value) {
+        this.value = value;
+    }
 
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public Identity getIdentity() {
+        return identity;
+    }
+
+    public void setIdentity(Identity identity) {
+        this.identity = identity;
+    }
+
+    public Authority getAuthority() {
+        return authority;
+    }
+
+    public void setAuthority(Authority authority) {
+        this.authority = authority;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
 }
