@@ -1,10 +1,14 @@
 package com.example.demo.auth.service;
 
-import com.example.demo.auth.domain.*;
-import com.example.demo.auth.repository.AuthorityRepository;
-import com.example.demo.auth.repository.CredentialRepository;
-import com.example.demo.auth.repository.IdentityRepository;
-import com.example.demo.auth.repository.TokenRepository;
+import com.example.demo.auth.domain.User;
+import com.example.demo.auth.domain.VerificationToken;
+import com.example.demo.auth.event.UserRegisteredEvent;
+import com.example.demo.auth.repository.UserRepository;
+import com.example.demo.auth.repository.VerificationTokenRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -12,95 +16,122 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 @Service
 public class AuthService {
-    private static final Pattern EMAIL_PATTERN = Pattern.compile(
-            "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
-    private static final PasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder();
 
-    private final IdentityRepository identities;
-    private final AuthorityRepository authorities;
-    private final CredentialRepository credentials;
-    private final TokenRepository tokens;
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+    private static final PasswordEncoder ENCODER = new BCryptPasswordEncoder();
 
-    public AuthService(
-            IdentityRepository identities,
-            AuthorityRepository authorities,
-            CredentialRepository credentials,
-            TokenRepository tokens) {
-        this.identities = identities;
-        this.authorities = authorities;
-        this.credentials = credentials;
+    private final UserRepository users;
+    private final VerificationTokenRepository tokens;
+    private final RabbitTemplate rabbit;
+
+    @Value("${app.mq.exchange}")
+    private String exchange;
+
+    @Value("${app.mq.rk.userRegistered}")
+    private String rkUserRegistered;
+
+    @Value("${app.token.expiry-minutes:30}")
+    private int expiryMinutes;
+
+    public AuthService(UserRepository users,
+                       VerificationTokenRepository tokens,
+                       RabbitTemplate rabbit) {
+        this.users  = users;
         this.tokens = tokens;
+        this.rabbit = rabbit;
     }
 
-    public boolean isValidEmail(String email) {
-        return email != null && EMAIL_PATTERN.matcher(email).matches();
-    }
+    // ----------------------------------------------------------------
+    // POST /register
+    // ----------------------------------------------------------------
 
+    /**
+     * Inscription :
+     *  1. Crée l'utilisateur (verified=false)
+     *  2. Génère un token UUID, stocke son HASH en base
+     *  3. Publie UserRegistered dans RabbitMQ avec le token EN CLAIR
+     *     (uniquement dans le message, jamais en base)
+     */
     @Transactional
-    public boolean register(String email, String credentialValue, AuthMethod method) {
-        if (!isValidEmail(email))
-            return false;
-        if (identities.findByEmail(email).isPresent())
-            return false;
-        Identity id = identities.save(new Identity(email, email));
-        Authority auth = authorities.findByMethod(method).orElseGet(() -> authorities.save(new Authority(method)));
-        id.addAuthority(auth); // ManyToMany relationship
-        String hashedCredential = PASSWORD_ENCODER.encode(credentialValue);
-        credentials.save(new Credential(hashedCredential, id, auth));
-        return true;
+    public void register(String email) {
+        // Vérification doublon
+        if (users.findByEmail(email).isPresent()) {
+            throw new IllegalArgumentException("Email déjà utilisé : " + email);
+        }
+
+        // 1. Créer l'utilisateur
+        User user = users.save(new User(email));
+        log.info("[AUTH] Utilisateur créé id={} email={}", user.getId(), email);
+
+        // 2. Générer le token secret + son hash
+        String tokenClear = UUID.randomUUID().toString();   // secret, jamais stocké
+        String tokenHash  = ENCODER.encode(tokenClear);     // seul le hash va en base
+        String tokenId    = UUID.randomUUID().toString();   // identifiant public (dans l'URL)
+        Instant expiresAt = Instant.now().plus(expiryMinutes, ChronoUnit.MINUTES);
+
+        tokens.save(new VerificationToken(tokenId, user, tokenHash, expiresAt));
+        log.info("[AUTH] Token créé tokenId={} expiresAt={}", tokenId, expiresAt);
+
+        // 3. Publier l'événement UserRegistered
+        UserRegisteredEvent event = new UserRegisteredEvent(
+                UUID.randomUUID().toString(),       // eventId unique
+                String.valueOf(user.getId()),        // userId
+                email,
+                tokenId,
+                tokenClear,                         // inclus dans l'événement pour le flux TP
+                Instant.now().toString()
+        );
+
+        rabbit.convertAndSend(exchange, rkUserRegistered, event,
+                msg -> {
+                    msg.getMessageProperties().setHeader("x-correlation-id", event.getEventId());
+                    msg.getMessageProperties().setHeader("x-schema-version", 1);
+                    return msg;
+                });
+
+        log.info("[AUTH] Événement UserRegistered publié eventId={}", event.getEventId());
     }
 
+    // ----------------------------------------------------------------
+    // GET /verify
+    // ----------------------------------------------------------------
+
+    /**
+     * Vérification du lien cliqué par l'utilisateur :
+     *  1. Retrouve le token par tokenId
+     *  2. Vérifie l'expiration
+     *  3. Compare BCrypt(tokenReçu) == tokenHash stocké
+     *  4. Marque l'utilisateur comme vérifié
+     *  5. Supprime le token (usage unique / one-shot)
+     */
     @Transactional
-    public String login(String email, String credentialValue, AuthMethod method) {
-        if (!isValidEmail(email))
-            return null;
-        Optional<Identity> idOpt = identities.findByEmail(email);
-        if (idOpt.isEmpty())
-            return null;
-        Identity id = idOpt.get();
-        Optional<Authority> authOpt = authorities.findByMethod(method);
-        if (authOpt.isEmpty() || !authOpt.get().isEnabled())
-            return null;
-        Authority auth = authOpt.get();
-        Optional<Credential> credOpt = credentials.findByIdentityAndAuthority(id, auth);
-        if (credOpt.isEmpty())
-            return null;
-        Credential cred = credOpt.get();
-        if (!PASSWORD_ENCODER.matches(credentialValue, cred.getValue()))
-            return null;
-        String tokenValue = UUID.randomUUID().toString();
-        Token token = new Token(tokenValue, id, auth, Instant.now().plus(1, ChronoUnit.HOURS));
-        tokens.save(token);
-        return tokenValue;
-    }
+    public void verify(String tokenId, String tokenClear) {
+        VerificationToken vt = tokens.findById(tokenId)
+                .orElseThrow(() -> new IllegalArgumentException("Token introuvable"));
 
-    @Transactional(readOnly = true)
-    public Token verify(String tokenValue) {
-        Optional<Token> tokenOpt = tokens.findByValue(tokenValue);
-        if (tokenOpt.isEmpty())
-            return null;
-        Token token = tokenOpt.get();
-        if (token.isRevoked())
-            return null;
-        if (token.getExpiresAt().isBefore(Instant.now()))
-            return null;
-        return token;
-    }
+        // Vérification expiration
+        if (Instant.now().isAfter(vt.getExpiresAt())) {
+            tokens.delete(vt); // nettoyage
+            throw new IllegalArgumentException("Token expiré");
+        }
 
-    @Transactional
-    public boolean logout(String tokenValue) {
-        Optional<Token> tokenOpt = tokens.findByValue(tokenValue);
-        if (tokenOpt.isEmpty())
-            return false;
-        Token token = tokenOpt.get();
-        token.setRevoked(true);
-        tokens.save(token);
-        return true;
+        // Vérification du secret par comparaison BCrypt
+        if (!ENCODER.matches(tokenClear, vt.getTokenHash())) {
+            throw new IllegalArgumentException("Token invalide");
+        }
+
+        // Marquer l'utilisateur comme vérifié
+        User user = vt.getUser();
+        user.setVerified(true);
+        users.save(user);
+        log.info("[AUTH] Email vérifié pour userId={} email={}", user.getId(), user.getEmail());
+
+        // Supprimer le token (usage unique)
+        tokens.delete(vt);
+        log.info("[AUTH] Token supprimé tokenId={}", tokenId);
     }
 }
