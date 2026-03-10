@@ -4,20 +4,11 @@ import com.example.demo.notification.service.EmailService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
-/**
- * Consommateur RabbitMQ.
- *
- * Écoute la file "notification.user-registered".
- * Lorsqu'un événement UserRegistered arrive, il envoie l'e-mail de vérification.
- *
- * En cas d'exception non catchée :
- *   Le message est nack'd sans requeue
- *   Il part automatiquement en DLQ (notification.user-registered.dlq)
- */
 @Component
 public class UserRegisteredConsumer {
 
@@ -25,13 +16,15 @@ public class UserRegisteredConsumer {
 
     private final EmailService emailService;
 
+    @Value("${app.notification.simulate-error:false}")
+    private boolean simulateError;
+
     public UserRegisteredConsumer(EmailService emailService) {
         this.emailService = emailService;
     }
 
     @RabbitListener(queues = "${app.mq.queue.userRegistered}")
     public void onUserRegistered(Map<String, Object> event) {
-        // Extraction des champs de l'événement
         String eventId    = (String) event.get("eventId");
         String email      = (String) event.get("email");
         String tokenId    = (String) event.get("tokenId");
@@ -39,16 +32,18 @@ public class UserRegisteredConsumer {
 
         log.info("[NOTIFICATION] Événement reçu eventId={} email={}", eventId, email);
 
-        // Validation minimale avant traitement
-        if (email == null || tokenId == null || tokenClear == null) {
-            log.error("[NOTIFICATION] Événement mal formé eventId={} → envoi en DLQ", eventId);
-            // Lancer une exception provoque le nack → DLQ
-            throw new IllegalArgumentException("Événement UserRegistered incomplet : " + event);
+        // Simulation d'erreur pour tester la DLQ
+        if (simulateError) {
+            log.error("[NOTIFICATION] Erreur simulée → message envoyé en DLQ eventId={}", eventId);
+            throw new RuntimeException("Erreur simulée pour test DLQ");
         }
 
-        // Envoi de l'e-mail (via MailHog en local)
-        emailService.sendVerificationEmail(email, tokenId, tokenClear);
+        if (email == null || tokenId == null || tokenClear == null) {
+            log.error("[NOTIFICATION] Événement mal formé → DLQ eventId={}", eventId);
+            throw new IllegalArgumentException("Événement incomplet : " + event);
+        }
 
-        log.info("[NOTIFICATION] Traitement terminé pour eventId={}", eventId);
+        emailService.sendVerificationEmail(email, tokenId, tokenClear);
+        log.info("[NOTIFICATION] Traitement terminé eventId={}", eventId);
     }
 }

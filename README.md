@@ -355,7 +355,7 @@ Tu dois voir :
 
 ---
 
-## Critères d'évaluation couverts
+## Critères d'évaluation couverts (Séance 1)
 
 | Critère | Statut |
 |---|---|
@@ -374,3 +374,135 @@ Tu dois voir :
 - La **DLQ** isole les messages en erreur pour éviter de bloquer la file principale
 - L'`eventId` UUID permet l'**idempotence** côté consommateur
 
+
+---
+
+## Séance 2 — Étapes réalisées
+
+### Étape 8 — Idempotence de la vérification
+
+La méthode `verify()` dans `AuthService` a été rendue idempotente : si le token est introuvable (déjà consommé) ou que l'utilisateur est déjà vérifié, le système retourne `ALREADY_VERIFIED` au lieu de lever une exception.
+
+Un enum `VerifyResult` a été introduit :
+
+```java
+public enum VerifyResult {
+    SUCCESS, ALREADY_VERIFIED, EXPIRED, INVALID
+}
+```
+
+Le contrôleur retourne une réponse `200 OK` avec le statut `ALREADY_VERIFIED` (pas d'erreur 4xx) pour permettre les appels répétés sans effet de bord.
+
+**Test :**
+```bash
+# Premier appel → VERIFIED
+curl -s "http://localhost:8080/verify?tokenId=XXX&t=YYY"
+
+# Deuxième appel sur le même lien → ALREADY_VERIFIED (pas d'erreur)
+curl -s "http://localhost:8080/verify?tokenId=XXX&t=YYY"
+```
+
+---
+
+### Étape 9 — Dead Letter Queue (DLQ) et simulation d'erreur
+
+Une propriété de simulation d'erreur a été ajoutée dans `application.properties` :
+
+```properties
+app.notification.simulate-error=false
+```
+
+Quand elle est activée (`true`), le consommateur `UserRegisteredConsumer` lève une `RuntimeException`, ce qui force le message à partir en Dead Letter Queue après épuisement des tentatives.
+
+Les files visibles dans RabbitMQ UI (`http://localhost:15672` → Queues) :
+- `notification.user-registered` — file principale
+- `notification.user-registered.dlq` — messages en erreur
+- `auth.events.dlq` — dead letter queue globale de l'exchange
+
+**Pour tester la DLQ :**
+1. Passer `app.notification.simulate-error=true` dans `application.properties`
+2. Lancer `POST /register`
+3. Observer dans RabbitMQ UI que le message arrive dans la DLQ
+4. Remettre à `false` pour le fonctionnement normal
+
+---
+
+### Étape 10 — Analytics via événement EmailVerified
+
+Un second événement RabbitMQ a été introduit : `EmailVerifiedEvent`, publié par `AuthService.verify()` après une vérification réussie.
+
+**Fichiers ajoutés :**
+
+| Fichier | Package | Rôle |
+|---|---|---|
+| `EmailVerifiedEvent.java` | `auth.event` | POJO de l'événement publié après vérification |
+| `AnalyticsConsumer.java` | `notification.consumer` | `@RabbitListener` sur `analytics.email-verified`, compteur `AtomicInteger` |
+
+**Flux :**
+```
+GET /verify (succès)
+  └─► Publie EmailVerifiedEvent sur RabbitMQ
+        └─► Exchange: auth.events
+              └─► Queue: analytics.email-verified
+                    └─► AnalyticsConsumer
+                          └─► Logs: [ANALYTICS] Total emails vérifiés : N
+```
+
+**Extrait des logs attendus :**
+```
+[ANALYTICS] EmailVerified reçu eventId=xxx userId=1
+[ANALYTICS] Total emails vérifiés : 1
+```
+
+---
+
+### Fichiers supplémentaires créés (Séance 2)
+
+| Fichier | Package | Rôle |
+|---|---|---|
+| `EmailVerifiedEvent.java` | `auth.event` | Événement publié après vérification réussie |
+| `AnalyticsConsumer.java` | `notification.consumer` | Consomme `analytics.email-verified`, compteur atomique |
+| `CorsConfig.java` | `config` | Configuration CORS pour permettre les appels depuis l'interface HTML locale |
+| `UserController.java` | `auth.controller` | `GET /users` — expose la liste des utilisateurs en base pour l'interface HTML |
+
+**`application.properties` — propriétés ajoutées :**
+```properties
+app.mq.rk.emailVerified=auth.email-verified
+app.mq.queue.emailVerified=analytics.email-verified
+app.notification.simulate-error=false
+```
+
+---
+
+## Interface de test HTML
+
+Une interface de test locale (`interface.html`) a été développée pour faciliter les tests du flux complet sans passer par `curl`.
+
+**Fonctionnalités :**
+- Indicateur de statut serveur en temps réel
+- Compteurs globaux : inscrits / vérifiés / tokens en attente
+- Formulaire d'inscription (`POST /register`)
+- Zone de collage d'URL MailHog — après inscription, un champ apparaît directement dans la page pour coller le lien reçu par e-mail ; les paramètres `tokenId` et `t` sont extraits automatiquement
+- Tokens en attente cliquables — chaque token capturé s'affiche comme un bouton qui remplit automatiquement les champs de vérification
+- Formulaire de vérification (`GET /verify`) avec remplissage automatique
+- Visualisation de la base de données — tableau `ID / Email / Statut` appelant `GET /users`, avec badge vert `VERIFIED` ou orange `EN ATTENTE`, rafraîchissement automatique après chaque inscription et vérification, et bouton de rafraîchissement manuel
+- Console de logs des requêtes avec horodatage
+- Liens rapides vers MailHog, RabbitMQ UI et H2 Console
+
+**Prérequis :** Spring Boot doit tourner sur `localhost:8080`, `CorsConfig.java` et `UserController.java` doivent être présents dans le projet.
+
+**Utilisation :** ouvrir `interface.html` directement dans le navigateur (aucun serveur requis).
+
+---
+
+## Critères d'évaluation — bilan complet
+
+| Critère | Statut |
+|---|---|
+| Flux fonctionnel complet : inscription → e-mail → vérification (40%) | ✅ |
+| Sécurité : token non stocké en clair, expiration respectée (25%) | ✅ |
+| Messagerie : configuration correcte, DLQ opérationnelle (20%) | ✅ |
+| Qualité : logs clairs, README, tests manuels reproductibles (15%) | ✅ |
+| Idempotence de la vérification | ✅ |
+| Simulation d'erreur et routage DLQ | ✅ |
+| Événement EmailVerified et consumer Analytics | ✅ |

@@ -15,10 +15,7 @@ public class AuthController {
         this.authService = authService;
     }
 
-    // ----------------------------------------------------------------
-    // POST /register
-    // Body JSON : { "email": "alice@example.com" }
-    // ----------------------------------------------------------------
+    // Endpoint pour l'inscription d'un utilisateur
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest body) {
         if (body.email == null || body.email.isBlank()) {
@@ -34,24 +31,25 @@ public class AuthController {
         }
     }
 
-    // ----------------------------------------------------------------
-    // GET /verify?tokenId=xxx&t=yyy
-    // tokenId : identifiant public du token
-    // t       : valeur secrète du token (en clair, reçue dans l'URL)
-    // ----------------------------------------------------------------
+    // Endpoint pour vérifier un e-mail
     @GetMapping("/verify")
     public ResponseEntity<?> verify(@RequestParam String tokenId,
                                     @RequestParam String t) {
-        try {
-            authService.verify(tokenId, t);
-            return ResponseEntity.ok(Map.of("status", "VERIFIED",
-                                            "message", "E-mail vérifié avec succès !"));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
+        AuthService.VerifyResult result = authService.verify(tokenId, t);
+        return switch (result) {
+            case SUCCESS -> ResponseEntity.ok(
+                    Map.of("status", "VERIFIED",
+                           "message", "E-mail vérifié avec succès !"));
+            case ALREADY_VERIFIED -> ResponseEntity.ok(
+                    Map.of("status", "ALREADY_VERIFIED",
+                           "message", "E-mail déjà vérifié, aucune action nécessaire."));
+            case EXPIRED -> ResponseEntity.badRequest()
+                    .body(Map.of("error", "Token expiré"));
+            case INVALID -> ResponseEntity.badRequest()
+                    .body(Map.of("error", "Token invalide"));
+        };
     }
 
-    // DTO interne pour la requête d'inscription
     public static class RegisterRequest {
         public String email;
     }
