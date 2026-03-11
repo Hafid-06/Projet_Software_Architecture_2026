@@ -50,12 +50,13 @@ public class AuthService {
     }
 
     @Transactional
-    public void register(String email) {
+    public void register(String email, String password) {
         if (users.findByEmail(email).isPresent()) {
             throw new IllegalArgumentException("Email déjà utilisé : " + email);
         }
 
-        User user = users.save(new User(email));
+        String hash = ENCODER.encode(password);
+        User user = users.save(new User(email, hash));
         log.info("[AUTH] Utilisateur créé id={} email={}", user.getId(), email);
 
         String tokenClear = UUID.randomUUID().toString();
@@ -139,6 +140,38 @@ public class AuthService {
 
         return VerifyResult.SUCCESS;
     }
+
+    /**
+     * Connexion : vérifie email + password + statut vérifié.
+     * Retourne un token UUID simple en guise de session.
+     */
+    @Transactional(readOnly = true)
+    public LoginResult login(String email, String password) {
+        User user = users.findByEmail(email).orElse(null);
+        if (user == null) {
+            log.warn("[AUTH] Login échoué – email inconnu : {}", email);
+            return new LoginResult(LoginStatus.INVALID_CREDENTIALS, null);
+        }
+        if (!ENCODER.matches(password, user.getPasswordHash())) {
+            log.warn("[AUTH] Login échoué – mot de passe incorrect pour {}", email);
+            return new LoginResult(LoginStatus.INVALID_CREDENTIALS, null);
+        }
+        if (!user.isVerified()) {
+            log.warn("[AUTH] Login échoué – email non vérifié : {}", email);
+            return new LoginResult(LoginStatus.NOT_VERIFIED, null);
+        }
+        String sessionToken = UUID.randomUUID().toString();
+        log.info("[AUTH] Login réussi userId={} email={}", user.getId(), email);
+        return new LoginResult(LoginStatus.SUCCESS, sessionToken);
+    }
+
+    public enum LoginStatus {
+        SUCCESS,
+        INVALID_CREDENTIALS,
+        NOT_VERIFIED
+    }
+
+    public record LoginResult(LoginStatus status, String token) {}
 
     public enum VerifyResult {
         SUCCESS,

@@ -5,9 +5,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @RestController
 public class AuthController {
+
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     private final AuthService authService;
 
@@ -21,14 +25,45 @@ public class AuthController {
         if (body.email == null || body.email.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "email requis"));
         }
+        if (!EMAIL_PATTERN.matcher(body.email.trim()).matches()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "email invalide"));
+        }
+        if (body.password == null || body.password.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "password requis"));
+        }
         try {
-            authService.register(body.email.trim().toLowerCase());
+            authService.register(body.email.trim().toLowerCase(), body.password);
             return ResponseEntity.status(201)
                     .body(Map.of("status", "REGISTERED",
                                  "message", "Un e-mail de vérification a été envoyé"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(409).body(Map.of("error", e.getMessage()));
         }
+    }
+
+    // Endpoint pour la connexion avec JWT
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@RequestBody LoginRequest body) {
+        if (body.email == null || body.email.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "email requis"));
+        }
+        if (!EMAIL_PATTERN.matcher(body.email.trim()).matches()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "email invalide"));
+        }
+        if (body.password == null || body.password.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "password requis"));
+        }
+        AuthService.LoginResult result = authService.login(body.email.trim().toLowerCase(), body.password);
+        return switch (result.status()) {
+            case SUCCESS -> ResponseEntity.ok(
+                    Map.of("status", "AUTHENTICATED",
+                           "token", result.token(),
+                           "message", "Connexion réussie"));
+            case NOT_VERIFIED -> ResponseEntity.status(403)
+                    .body(Map.of("error", "E-mail non vérifié. Vérifiez votre boîte mail."));
+            case INVALID_CREDENTIALS -> ResponseEntity.status(401)
+                    .body(Map.of("error", "Email ou mot de passe incorrect"));
+        };
     }
 
     // Endpoint pour vérifier un e-mail
@@ -52,5 +87,11 @@ public class AuthController {
 
     public static class RegisterRequest {
         public String email;
+        public String password;
+    }
+
+    public static class LoginRequest {
+        public String email;
+        public String password;
     }
 }
