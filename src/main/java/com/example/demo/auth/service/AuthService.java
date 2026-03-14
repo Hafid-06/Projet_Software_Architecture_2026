@@ -28,6 +28,7 @@ public class AuthService {
     private final UserRepository users;
     private final VerificationTokenRepository tokens;
     private final RabbitTemplate rabbit;
+    private final TokenStore tokenStore;
 
     @Value("${app.mq.exchange}")
     private String exchange;
@@ -43,10 +44,12 @@ public class AuthService {
 
     public AuthService(UserRepository users,
                        VerificationTokenRepository tokens,
-                       RabbitTemplate rabbit) {
+                       RabbitTemplate rabbit,
+                       TokenStore tokenStore) {
         this.users  = users;
         this.tokens = tokens;
         this.rabbit = rabbit;
+        this.tokenStore = tokenStore;
     }
 
     @Transactional
@@ -161,7 +164,8 @@ public class AuthService {
             return new LoginResult(LoginStatus.NOT_VERIFIED, null);
         }
         String sessionToken = UUID.randomUUID().toString();
-        log.info("[AUTH] Login réussi userId={} email={}", user.getId(), email);
+        tokenStore.store(sessionToken);
+        log.info("[AUTH] Login réussi userId={} email={} token={}", user.getId(), email, sessionToken);
         return new LoginResult(LoginStatus.SUCCESS, sessionToken);
     }
 

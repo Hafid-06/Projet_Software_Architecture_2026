@@ -1,6 +1,8 @@
 package com.example.demo.auth.controller;
 
 import com.example.demo.auth.service.AuthService;
+import com.example.demo.auth.service.TokenStore;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,9 +16,11 @@ public class AuthController {
             Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     private final AuthService authService;
+    private final TokenStore tokenStore;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, TokenStore tokenStore) {
         this.authService = authService;
+        this.tokenStore = tokenStore;
     }
 
     // Endpoint pour l'inscription d'un utilisateur
@@ -83,6 +87,24 @@ public class AuthController {
             case INVALID -> ResponseEntity.badRequest()
                     .body(Map.of("error", "Token invalide"));
         };
+    }
+
+    /**
+     * Endpoint interne appelé par NGINX auth_request.
+     * Vérifie le header Authorization: Bearer <token>
+     * Retourne 200 si valide, 401 sinon.
+     */
+    @GetMapping("/auth/validate")
+    public ResponseEntity<?> validate(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(401).body(Map.of("error", "Token manquant"));
+        }
+        String token = authHeader.substring(7);
+        if (!tokenStore.isValid(token)) {
+            return ResponseEntity.status(401).body(Map.of("error", "Token invalide"));
+        }
+        return ResponseEntity.ok(Map.of("status", "VALID"));
     }
 
     public static class RegisterRequest {

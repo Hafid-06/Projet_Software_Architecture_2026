@@ -506,3 +506,66 @@ Une interface de test locale (`interface.html`) a été développée pour facili
 | Idempotence de la vérification | ✅ |
 | Simulation d'erreur et routage DLQ | ✅ |
 | Événement EmailVerified et consumer Analytics | ✅ |
+
+---
+
+## Séance 3 — NGINX Reverse Proxy + Services protégés
+
+### Principe
+
+NGINX sert de **point d'entrée unique** (port 80). Il joue le rôle de reverse proxy devant tous les services.
+
+Certaines routes sont **publiques** (`/register`, `/login`, `/verify`) et sont transmises directement au service Auth (Spring Boot).
+
+D'autres routes sont **protégées** (`/service-a`, `/service-b`). Avant de transmettre la requête, NGINX fait un **subrequest interne** (`auth_request`) vers l'endpoint `/auth/validate` du service Auth. Celui-ci vérifie le header `Authorization: Bearer <token>` :
+- Si le token est valide → NGINX laisse passer vers le service cible
+- Sinon → **403 Accès refusé**
+
+Deux pseudo-services A et B (simples conteneurs NGINX) répondent `hello A` et `hello B` pour démontrer le mécanisme.
+
+### Architecture
+
+```
+Client → NGINX (:80)
+            │
+            ├── /register, /login, /verify → Auth (Spring Boot)
+            │
+            ├── /service-a → [auth_request → Auth] → Service A ("hello A")
+            └── /service-b → [auth_request → Auth] → Service B ("hello B")
+```
+
+### Conteneurs Docker (docker-compose)
+
+| Service | Rôle | Port |
+|---|---|---|
+| nginx | Reverse proxy, CORS, auth_request | 80 |
+| app1 / app2 | Spring Boot Auth | 8080 (interne) |
+| service-a | Pseudo-service "hello A" | 80 (interne) |
+| service-b | Pseudo-service "hello B" | 80 (interne) |
+| rabbitmq | Messaging asynchrone | 5672 / 15672 |
+| mailhog | SMTP local | 1025 / 8025 |
+
+### Flux de test
+
+1. `POST /register` → inscription + email de vérification
+2. Vérifier l'email via MailHog → `GET /verify`
+3. `POST /login` → retourne un token
+4. `GET /service-a` avec `Authorization: Bearer <token>` → `hello A` (200)
+5. `GET /service-a` sans token → `403 Accès refusé`
+
+---
+
+## Critères d'évaluation — bilan complet
+
+| Critère | Statut |
+|---|---|
+| Flux fonctionnel complet : inscription → e-mail → vérification | ✅ |
+| Sécurité : token hashé BCrypt, expiration | ✅ |
+| Messagerie : RabbitMQ, DLQ | ✅ |
+| Qualité : logs, README, tests reproductibles | ✅ |
+| Idempotence de la vérification | ✅ |
+| DLQ et simulation d'erreur | ✅ |
+| Événement EmailVerified + Analytics | ✅ |
+| NGINX reverse proxy + auth_request | ✅ |
+| Services protégés A et B | ✅ |
+| Docker Compose (7 conteneurs) | ✅ |

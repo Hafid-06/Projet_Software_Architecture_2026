@@ -24,13 +24,13 @@ services:
     environment:
       - SPRING_RABBITMQ_HOST=rabbitmq
       - SPRING_MAIL_HOST=mailhog
-      - APP_MAIL_AUTH_BASE_URL=http://localhost/
+      - APP_MAIL_AUTH_BASE_URL=http://localhost
       - SERVER_PORT=8080
     depends_on:
       - rabbitmq
       - mailhog
     volumes:
-      - h2-data:/data
+      - h2-data-1:/data
 
   app2:
     build: .
@@ -38,13 +38,21 @@ services:
     environment:
       - SPRING_RABBITMQ_HOST=rabbitmq
       - SPRING_MAIL_HOST=mailhog
-      - APP_MAIL_AUTH_BASE_URL=http://localhost/
+      - APP_MAIL_AUTH_BASE_URL=http://localhost
       - SERVER_PORT=8080
     depends_on:
       - rabbitmq
       - mailhog
     volumes:
-      - h2-data:/data
+      - h2-data-2:/data
+
+  service-a:
+    build: ./service-a
+    container_name: service-a
+
+  service-b:
+    build: ./service-b
+    container_name: service-b
 
   nginx:
     image: nginx:alpine
@@ -56,6 +64,9 @@ services:
     depends_on:
       - app1
       - app2
+      - service-a
+      - service-b
 
 volumes:
-  h2-data:
+  h2-data-1:
+  h2-data-2:

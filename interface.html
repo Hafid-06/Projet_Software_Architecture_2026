@@ -379,6 +379,21 @@
       <div class="resp-box" id="serverResponse">En attente...</div>
     </div>
 
+    <!-- Services A / B -->
+    <div class="resp-section">
+      <h3>Test des services proteges (NGINX auth_request)</h3>
+      <div style="display:flex;gap:10px;margin-bottom:10px;">
+        <label class="lbl" style="margin:auto 0">Token JWT :</label>
+        <input class="inp" type="text" id="bearerToken" placeholder="Colle le token obtenu apres login" style="flex:1;margin-bottom:0" />
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn teal" style="flex:1" onclick="testService('a')">Service A</button>
+        <button class="btn indigo" style="flex:1" onclick="testService('b')">Service B</button>
+        <button class="btn red" style="flex:1" onclick="testServiceNoToken()">Sans Token (403)</button>
+      </div>
+      <div class="resp-box" id="serviceResponse" style="margin-top:10px">En attente...</div>
+    </div>
+
     <!-- DB -->
     <div class="db-section">
       <div class="db-top">
@@ -400,7 +415,9 @@
   </div>
 
 <script>
-  var AUTH_API = 'http://localhost:8080';
+  var AUTH_API = 'http://localhost';
+  var NGINX_API = 'http://localhost';
+  var lastToken = '';
 
   function setResponse(text, type) {
     var el = document.getElementById('serverResponse');
@@ -459,6 +476,10 @@
     })
     .then(function(r) { return r.json().then(function(d) {
       setResponse(JSON.stringify(d, null, 2), r.ok ? 'ok' : 'err');
+      if (r.ok && d.token) {
+        lastToken = d.token;
+        document.getElementById('bearerToken').value = d.token;
+      }
     }); })
     .catch(function() { setResponse('Serveur inaccessible', 'err'); })
     .finally(function() { btn.classList.remove('loading'); btn.textContent = 'Se connecter'; });
@@ -481,6 +502,29 @@
   document.getElementById('regPassword').addEventListener('keydown', function(e) { if (e.key === 'Enter') doRegister(); });
   document.getElementById('tokenClearInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') doVerify(); });
   document.getElementById('loginPassword').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
+
+  function testService(name) {
+    var token = document.getElementById('bearerToken').value.trim();
+    if (!token) { setSvcResponse('Colle un token d\'abord !', 'err'); return; }
+    fetch(NGINX_API + '/service-' + name + '?_=' + Date.now(), {
+      headers: { 'Authorization': 'Bearer ' + token },
+      cache: 'no-store'
+    })
+    .then(function(r) { return r.text().then(function(t) { setSvcResponse('Service ' + name.toUpperCase() + ' => ' + r.status + '\n' + t, r.ok ? 'ok' : 'err'); }); })
+    .catch(function() { setSvcResponse('NGINX inaccessible (port 80)', 'err'); });
+  }
+
+  function testServiceNoToken() {
+    fetch(NGINX_API + '/service-a?_=' + Date.now(), { cache: 'no-store' })
+    .then(function(r) { return r.text().then(function(t) { setSvcResponse('Sans token => ' + r.status + '\n' + t, r.ok ? 'ok' : 'err'); }); })
+    .catch(function() { setSvcResponse('NGINX inaccessible (port 80)', 'err'); });
+  }
+
+  function setSvcResponse(text, type) {
+    var el = document.getElementById('serviceResponse');
+    el.textContent = text;
+    el.className = 'resp-box' + (type ? ' ' + type : '');
+  }
 
   loadUsers();
 </script>
