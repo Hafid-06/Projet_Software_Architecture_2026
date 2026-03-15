@@ -33,7 +33,7 @@ public class UserController {
             })
             .collect(Collectors.toList());
     }
-
+//Nombre de tokens en attente de vérification
     @GetMapping("/pending-count")
     public Map<String, Object> getPendingCount() {
         Map<String, Object> map = new HashMap<>();
