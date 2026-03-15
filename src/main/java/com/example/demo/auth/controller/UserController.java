@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
-@CrossOrigin(origins = "*")
 public class UserController {
 
     private final UserRepository users;
