@@ -71,308 +71,150 @@ Comme pour les mots de passe, on ne stocke **jamais** un secret en clair en base
 
 ---
 
-## Fichiers créés / modifiés
-
-### Fichiers créés
-
-| Fichier | Package | Rôle |
-|---|---|---|
-| `User.java` | `auth.domain` | Entité JPA : `email` + `verified` (false par défaut) |
-| `VerificationToken.java` | `auth.domain` | Stocke `tokenId` (public) + `tokenHash` (BCrypt) + `expiresAt` |
-| `UserRepository.java` | `auth.repository` | `findByEmail()` |
-| `VerificationTokenRepository.java` | `auth.repository` | `findById(tokenId)` |
-| `UserRegisteredEvent.java` | `auth.event` | POJO de l'événement publié dans RabbitMQ |
-| `AuthService.java` | `auth.service` | Logique inscription + génération token + publication event + vérification BCrypt |
-| `AuthController.java` | `auth.controller` | `POST /register` et `GET /verify` |
-| `RabbitConfig.java` | `auth.config` | Déclare exchange topic + DLX + DLQ |
-| `NotificationRabbitConfig.java` | `notification.config` | Déclare la file avec `x-dead-letter-exchange` |
-| `EmailService.java` | `notification.service` | Construit le lien de vérification et envoie l'e-mail via MailHog |
-| `UserRegisteredConsumer.java` | `notification.consumer` | `@RabbitListener` sur la file, déclenche l'envoi d'e-mail |
-
-### Fichiers modifiés
-
-| Fichier | Modification |
-|---|---|
-| `pom.xml` | Ajout des dépendances : `spring-boot-starter-amqp`, `spring-boot-starter-mail`, `jackson-datatype-jsr310`, `spring-security-crypto` |
-| `application.properties` | Ajout de la config RabbitMQ, SMTP MailHog, paramètres `app.mq.*`, `app.mail.*`, `app.token.*` |
-
----
-
 ## Structure du projet
 
 ```
-src/main/java/com/example/demo/
-├── DemoApplication.java
-├── auth/
-│   ├── auth-archi/                        ← Fichiers Bruno (tests API)
-│   │   ├── Authority/, Credential/
-│   │   ├── Identity/, Token/
-│   │   ├── Login.bru, Logout.bru
-│   │   ├── Register.bru, Verify.bru
-│   │   └── environments/local.bru
-│   ├── controller/
-│   │   ├── AuthController.java            ← POST /register, GET /verify  [NOUVEAU]
-│   │   ├── AuthorityController.java
-│   │   ├── CredentialController.java
-│   │   ├── IdentityController.java
-│   │   └── TokenController.java
-│   ├── domain/
-│   │   ├── AuthMethod.java
-│   │   ├── Authority.java
-│   │   ├── Credential.java
-│   │   ├── Identity.java
-│   │   ├── Token.java
-│   │   ├── User.java                      ← Entité utilisateur  [NOUVEAU]
-│   │   └── VerificationToken.java         ← Token hashé BCrypt  [NOUVEAU]
-│   ├── event/
-│   │   └── UserRegisteredEvent.java       ← Événement RabbitMQ  [NOUVEAU]
-│   ├── repository/
-│   │   ├── AuthorityRepository.java
-│   │   ├── CredentialRepository.java
-│   │   ├── IdentityRepository.java
-│   │   ├── TokenRepository.java
-│   │   ├── UserRepository.java            ← [NOUVEAU]
-│   │   └── VerificationTokenRepository.java ← [NOUVEAU]
-│   └── service/
-│       ├── AuthorityService.java
-│       ├── AuthService.java               ← Logique inscription/vérification  [NOUVEAU]
-│       ├── CredentialService.java
-│       ├── IdentityService.java
-│       └── TokenService.java
-├── config/
-│   ├── H2ConsoleConfig.java
-│   └── RabbitConfig.java                  ← Exchange + DLX + DLQ  [NOUVEAU]
-├── notification/
-│   ├── consumer/
-│   │   └── UserRegisteredConsumer.java    ← @RabbitListener  [NOUVEAU]
-│   └── service/
-│       └── EmailService.java              ← Envoi e-mail MailHog  [NOUVEAU]
-└── web/
-    └── HomeController.java
+Projet_Software_Architecture_2026/
+├── Dockerfile
+├── docker-compose.yml
+├── pom.xml
+├── interface.html
+├── README.md
+├── mvnw / mvnw.cmd
+│
+├── nginx/
+│   └── nginx.conf
+│
+├── service-a/
+│   └── Dockerfile
+│
+├── service-b/
+│   └── Dockerfile
+│
+└── src/main/
+    ├── resources/
+    │   ├── application.properties
+    │   └── static/
+    │       └── index.html
+    │
+    └── java/com/example/demo/
+        ├── DemoApplication.java
+        ├── web/
+        │   └── HomeController.java
+        ├── config/
+        │   ├── RabbitConfig.java
+        │   ├── CorsConfig.java
+        │   └── H2ConsoleConfig.java
+        ├── auth/
+        │   ├── domain/
+        │   │   ├── User.java
+        │   │   ├── VerificationToken.java
+        │   │   ├── Identity.java
+        │   │   ├── Authority.java
+        │   │   ├── Credential.java
+        │   │   ├── Token.java
+        │   │   └── AuthMethod.java
+        │   ├── repository/
+        │   │   ├── UserRepository.java
+        │   │   ├── VerificationTokenRepository.java
+        │   │   ├── IdentityRepository.java
+        │   │   ├── AuthorityRepository.java
+        │   │   ├── CredentialRepository.java
+        │   │   └── TokenRepository.java
+        │   ├── service/
+        │   │   ├── AuthService.java
+        │   │   ├── TokenStore.java
+        │   │   ├── IdentityService.java
+        │   │   ├── AuthorityService.java
+        │   │   ├── CredentialService.java
+        │   │   └── TokenService.java
+        │   ├── event/
+        │   │   ├── UserRegisteredEvent.java
+        │   │   └── EmailVerifiedEvent.java
+        │   ├── controller/
+        │   │   ├── AuthController.java
+        │   │   ├── UserController.java
+        │   │   ├── IdentityController.java
+        │   │   ├── AuthorityController.java
+        │   │   ├── CredentialController.java
+        │   │   └── TokenController.java
+        │   └── auth-archi/
+        │       ├── Login.bru, Logout.bru, Register.bru, Verify.bru
+        │       ├── Authority/, Credential/, Identity/, Token/
+        │       └── environments/local.bru
+        └── notification/
+            ├── consumer/
+            │   ├── UserRegisteredConsumer.java
+            │   └── AnalyticsConsumer.java
+            └── service/
+                └── EmailService.java
 ```
 
 ---
 
 ## Prérequis
 
-- Java 17+
-- Maven 3.8+
-- Homebrew (Mac) ou Docker
+- Docker Desktop (https://www.docker.com/products/docker-desktop)
 
 ---
 
 ## Installation et démarrage
 
-### Sur Mac (via Homebrew)
-
 ```bash
-# Installer Homebrew si pas déjà fait
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Installer RabbitMQ
-brew install rabbitmq
-brew services start rabbitmq
-
-# Installer et démarrer MailHog (laisser ce terminal ouvert)
-brew install mailhog
-mailhog
+docker compose up --build -d
 ```
 
-Vérifier dans le navigateur :
-- **RabbitMQ UI** → http://localhost:15672 (guest / guest)
-- **MailHog UI** → http://localhost:8025
-
----
-
-### Sur Windows (via Docker Desktop)
-
-**1. Installer Docker Desktop**
-
-Télécharger et installer Docker Desktop : https://www.docker.com/products/docker-desktop
-
-Vérifier l'installation dans un terminal PowerShell :
-```powershell
-docker --version
-```
-
-**2. Créer un fichier `docker-compose.yml`** à la racine du projet avec ce contenu :
-
-```yaml
-version: "3.9"
-services:
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-
-  mailhog:
-    image: mailhog/mailhog
-    container_name: mailhog
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-```
-
-**3. Lancer RabbitMQ + MailHog**
-
-```powershell
-docker-compose up -d
-```
-
-Vérifier que les conteneurs tournent :
-```powershell
+Vérifier que les 7 conteneurs tournent :
+```bash
 docker ps
 ```
 
-Vérifier dans le navigateur :
+Interfaces web :
+- **Application** → http://localhost (NGINX port 80)
+- **MailHog** → http://localhost:8025
 - **RabbitMQ UI** → http://localhost:15672 (guest / guest)
-- **MailHog UI** → http://localhost:8025
 
 ---
 
-### 2. Lancer le projet Spring Boot (Mac et Windows)
+## Test du flux complet
 
-Dans un nouveau terminal, depuis le dossier du projet :
-
-```bash
-mvn spring-boot:run
-```
-
-L'application est prête quand tu vois :
-```
-Started DemoApplication in X seconds
-```
-
----
-
-## Test du flux complet (étape par étape)
-
-### Étape 1 — Inscription
-
-Dans un nouveau terminal :
+### 1. Inscription
 
 ```bash
-curl -s -X POST http://localhost:8080/register \
+curl -s -X POST http://localhost/register \
   -H "Content-Type: application/json" \
-  -d '{"email": "alice@example.com"}'
+  -d '{"email": "alice@example.com", "password": "secret123"}'
 ```
 
-**Réponse attendue :**
-```json
-{
-  "status": "REGISTERED",
-  "message": "Un e-mail de vérification a été envoyé"
-}
-```
+### 2. Vérifier l'e-mail dans MailHog
 
-**Dans la console Spring Boot, tu dois voir :**
-```
-[AUTH] Utilisateur créé id=1 email=alice@example.com
-[AUTH] Token créé tokenId=xxx expiresAt=...
-[AUTH] Événement UserRegistered publié eventId=xxx
-[NOTIFICATION] Événement reçu eventId=xxx email=alice@example.com
-[NOTIFICATION] E-mail envoyé à alice@example.com tokenId=xxx
-```
+Ouvrir **http://localhost:8025** → copier le lien de vérification → l'ouvrir dans le navigateur.
 
----
-
-### Étape 2 — Consulter l'e-mail dans MailHog
-
-Ouvrir **http://localhost:8025**
-
-Tu dois voir un e-mail pour `alice@example.com` contenant un lien :
-```
-http://localhost:8080/verify?tokenId=XXX&t=YYY
-```
-
----
-
-### Étape 3 — Vérifier l'e-mail (cliquer le lien)
-
-Copier le lien depuis MailHog et lancer :
+### 3. Login
 
 ```bash
-curl -s "http://localhost:8080/verify?tokenId=XXX&t=YYY"
-```
-
-**Réponse attendue :**
-```json
-{
-  "status": "VERIFIED",
-  "message": "E-mail vérifié avec succès !"
-}
-```
-
----
-
-### Étape 4 — Vérifier en base H2
-
-Ouvrir **http://localhost:8080/h2-console**
-- JDBC URL : `jdbc:h2:mem:demo`
-- User : `sa`
-- Password : *(laisser vide)*
-
-```sql
--- L'utilisateur doit avoir VERIFIED = TRUE
-SELECT * FROM users;
-
--- La table doit être vide (token supprimé après usage one-shot)
-SELECT * FROM verification_tokens;
-```
-
----
-
-### Étape 5 — Tester le doublon (erreur attendue)
-
-```bash
-curl -s -X POST http://localhost:8080/register \
+curl -s -X POST http://localhost/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "alice@example.com"}'
+  -d '{"email": "alice@example.com", "password": "secret123"}'
 ```
 
-**Réponse attendue :**
-```json
-{
-  "error": "Email déjà utilisé : alice@example.com"
-}
+Retourne un `token` UUID.
+
+### 4. Accès aux services protégés
+
+```bash
+# Avec token → 200 "hello A"
+curl -s http://localhost/service-a -H "Authorization: Bearer <token>"
+
+# Sans token → 403 Accès refusé
+curl -s http://localhost/service-a
 ```
 
----
+### 5. Vérifier les files RabbitMQ
 
-### Étape 6 — Vérifier les files dans RabbitMQ UI
-
-Ouvrir **http://localhost:15672** → onglet **Queues**
-
-Tu dois voir :
+Ouvrir **http://localhost:15672** → onglet **Queues** :
 - `notification.user-registered` — file principale
-- `notification.user-registered.dlq` — dead letter queue
-- `auth.events.dlq` — dead letter queue globale
-
----
-
-## Critères d'évaluation couverts (Séance 1)
-
-| Critère | Statut |
-|---|---|
-| Flux fonctionnel complet : inscription → e-mail → vérification (40%) | ✅ |
-| Sécurité : token non stocké en clair, expiration respectée (25%) | ✅ |
-| Messagerie : configuration correcte, DLQ opérationnelle (20%) | ✅ |
-| Qualité : logs clairs, README, tests manuels reproductibles (15%) | ✅ |
-
----
-
-## Points clés à retenir
-
-- Le token n'est **jamais stocké en clair** en base — uniquement son hash BCrypt
-- Le token est **à usage unique** — supprimé immédiatement après vérification
-- La messagerie assure le **découplage** entre Auth et Notification
-- La **DLQ** isole les messages en erreur pour éviter de bloquer la file principale
-- L'`eventId` UUID permet l'**idempotence** côté consommateur
+- `auth.events.dlq` — dead letter queue
 
 
 ---
@@ -396,10 +238,10 @@ Le contrôleur retourne une réponse `200 OK` avec le statut `ALREADY_VERIFIED` 
 **Test :**
 ```bash
 # Premier appel → VERIFIED
-curl -s "http://localhost:8080/verify?tokenId=XXX&t=YYY"
+curl -s "http://localhost/verify?tokenId=XXX&t=YYY"
 
 # Deuxième appel sur le même lien → ALREADY_VERIFIED (pas d'erreur)
-curl -s "http://localhost:8080/verify?tokenId=XXX&t=YYY"
+curl -s "http://localhost/verify?tokenId=XXX&t=YYY"
 ```
 
 ---
@@ -453,59 +295,6 @@ GET /verify (succès)
 [ANALYTICS] EmailVerified reçu eventId=xxx userId=1
 [ANALYTICS] Total emails vérifiés : 1
 ```
-
----
-
-### Fichiers supplémentaires créés (Séance 2)
-
-| Fichier | Package | Rôle |
-|---|---|---|
-| `EmailVerifiedEvent.java` | `auth.event` | Événement publié après vérification réussie |
-| `AnalyticsConsumer.java` | `notification.consumer` | Consomme `analytics.email-verified`, compteur atomique |
-| `CorsConfig.java` | `config` | Configuration CORS pour permettre les appels depuis l'interface HTML locale |
-| `UserController.java` | `auth.controller` | `GET /users` — expose la liste des utilisateurs en base pour l'interface HTML |
-
-**`application.properties` — propriétés ajoutées :**
-```properties
-app.mq.rk.emailVerified=auth.email-verified
-app.mq.queue.emailVerified=analytics.email-verified
-app.notification.simulate-error=false
-```
-
----
-
-## Interface de test HTML
-
-Une interface de test locale (`interface.html`) a été développée pour faciliter les tests du flux complet sans passer par `curl`.
-
-**Fonctionnalités :**
-- Indicateur de statut serveur en temps réel
-- Compteurs globaux : inscrits / vérifiés / tokens en attente
-- Formulaire d'inscription (`POST /register`)
-- Zone de collage d'URL MailHog — après inscription, un champ apparaît directement dans la page pour coller le lien reçu par e-mail ; les paramètres `tokenId` et `t` sont extraits automatiquement
-- Tokens en attente cliquables — chaque token capturé s'affiche comme un bouton qui remplit automatiquement les champs de vérification
-- Formulaire de vérification (`GET /verify`) avec remplissage automatique
-- Visualisation de la base de données — tableau `ID / Email / Statut` appelant `GET /users`, avec badge vert `VERIFIED` ou orange `EN ATTENTE`, rafraîchissement automatique après chaque inscription et vérification, et bouton de rafraîchissement manuel
-- Console de logs des requêtes avec horodatage
-- Liens rapides vers MailHog, RabbitMQ UI et H2 Console
-
-**Prérequis :** Spring Boot doit tourner sur `localhost:8080`, `CorsConfig.java` et `UserController.java` doivent être présents dans le projet.
-
-**Utilisation :** ouvrir `interface.html` directement dans le navigateur (aucun serveur requis).
-
----
-
-## Critères d'évaluation — bilan complet
-
-| Critère | Statut |
-|---|---|
-| Flux fonctionnel complet : inscription → e-mail → vérification (40%) | ✅ |
-| Sécurité : token non stocké en clair, expiration respectée (25%) | ✅ |
-| Messagerie : configuration correcte, DLQ opérationnelle (20%) | ✅ |
-| Qualité : logs clairs, README, tests manuels reproductibles (15%) | ✅ |
-| Idempotence de la vérification | ✅ |
-| Simulation d'erreur et routage DLQ | ✅ |
-| Événement EmailVerified et consumer Analytics | ✅ |
 
 ---
 
